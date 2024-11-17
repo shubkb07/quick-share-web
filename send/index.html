@@ -1,0 +1,63 @@
+<!-- send/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>QuickShare - Send File</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Include Google Fonts for Roboto -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+    <div class="theme-switcher">
+        <select id="themeSelect">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+        </select>
+    </div>
+    <main class="container">
+        <header>
+            <h1>QuickShare</h1>
+        </header>
+
+        <div class="upload-area" id="dropArea">
+            <p>Drop file here or click to select</p>
+            <input type="file" id="fileInput">
+        </div>
+
+        <div class="file-info" id="fileInfo" style="display: none;">
+            <p>File: <span id="fileName">-</span></p>
+            <p>Size: <span id="fileSize">-</span></p>
+        </div>
+
+        <div class="connection-info" id="connectionInfo" style="display: none;">
+            <p>Share this code or link with the receiver:</p>
+            <div class="code-display" id="connectionCode">-</div>
+            <div class="url-display" id="connectionURL">-</div>
+            <div class="button-group">
+                <button class="copy-btn" id="copyCodeBtn">Copy Code</button>
+                <button class="share-btn" id="shareCodeBtn">Share Code</button>
+            </div>
+            <div class="button-group">
+                <button class="copy-btn" id="copyLinkBtn">Copy Link</button>
+                <button class="share-btn" id="shareLinkBtn">Share Link</button>
+            </div>
+            <p class="status" id="connectionStatus">Waiting for receiver...</p>
+            <button class="stop-btn" id="stopBtn" style="display: none;">Stop</button>
+        </div>
+
+        <div class="progress-bar" id="progressBar" style="display: none;">
+            <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+
+        <p class="status" id="transferStatus"></p>
+        <p class="error" id="errorMessage"></p>
+        <p class="notification" id="notificationMessage"></p>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

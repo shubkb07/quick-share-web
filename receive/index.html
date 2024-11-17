@@ -1,0 +1,51 @@
+<!-- receive/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>QuickShare - Receive File</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Include Google Fonts for Roboto -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+    <div class="theme-switcher">
+        <select id="themeSelect">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+        </select>
+    </div>
+    <main class="container">
+        <header>
+            <h1>QuickShare</h1>
+        </header>
+
+        <div class="code-input-area" id="codeInputArea">
+            <input type="text" class="code-input" id="connectionCode" placeholder="Enter connection code" maxlength="6">
+            <button class="connect-btn" id="connectBtn">Connect</button>
+        </div>
+
+        <div class="file-info" id="fileInfo" style="display: none;">
+            <p>File: <span id="fileName">-</span></p>
+            <p>Size: <span id="fileSize">-</span></p>
+        </div>
+
+        <div class="progress-bar" id="progressBar" style="display: none;">
+            <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+
+        <p class="status" id="connectionStatus"></p>
+        <p class="status" id="transferStatus"></p>
+        <p class="error" id="errorMessage"></p>
+        <p class="notification" id="notificationMessage"></p>
+
+        <button class="download-btn" id="downloadBtn" style="display: none;">Download File</button>
+        <button class="stop-btn" id="stopBtn" style="display: none;">Stop</button>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
