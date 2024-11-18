@@ -3,7 +3,7 @@ name: Notify Main Repository on Push
 on:
   push:
     branches:
-      - main  # Adjust if using a different default branch
+      - master  # Adjust if using a different default branch
 
 jobs:
   notify:
