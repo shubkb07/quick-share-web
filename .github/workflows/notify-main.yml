@@ -14,5 +14,5 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.PAT_FINED_GRAINED_AUTOMATION }}
-          repository: your-username/app.shubkb.com
+          repository: shubkb07/app.shubkb.com
           event-type: update-subtrees
