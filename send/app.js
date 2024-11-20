@@ -19,8 +19,8 @@ class P2PFileSender {
 
         // Flow control variables
         this.isPaused = false; // Indicates if sending is paused
-        this.pendingAcknowledgments = 0; // Number of chunks sent but not yet acknowledged
-        this.maxPendingChunks = 10; // Maximum number of unacknowledged chunks allowed
+        this.bufferedAmountHighThreshold = 262144; // 256KB
+        this.bufferedAmountLowThreshold = 65536; // 64KB
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -100,9 +100,6 @@ class P2PFileSender {
 
         // Theme switcher event
         this.themeSelect.addEventListener('change', () => this.changeTheme());
-
-        // Listen for messages from the receiver for flow control
-        this.messageHandler = (event) => this.handleReceiverMessage(event);
     }
 
     // Apply saved theme or default to system preference
@@ -135,10 +132,9 @@ class P2PFileSender {
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
 
-        // Create DataChannel with reliable and ordered delivery
+        // Create DataChannel with ordered delivery
         this.dataChannel = this.peerConnection.createDataChannel('fileTransfer', {
-            ordered: true,
-            reliable: true,
+            ordered: true
         });
 
         this.setupDataChannelHandlers();
@@ -222,6 +218,9 @@ class P2PFileSender {
 
     // Set up DataChannel event handlers
     setupDataChannelHandlers() {
+        // Set the bufferedAmountLowThreshold for flow control
+        this.dataChannel.bufferedAmountLowThreshold = this.bufferedAmountLowThreshold;
+
         // Event listener for when DataChannel is open
         this.dataChannel.onopen = () => {
             this.connectionStatus.textContent = 'Receiver connected! Starting file transfer...';
@@ -245,8 +244,8 @@ class P2PFileSender {
 
             this.isTransferring = true;
 
-            // Add event listener for messages from the receiver
-            this.dataChannel.addEventListener('message', this.messageHandler);
+            // Start sending file data
+            this.sendFileData();
         };
 
         // Event listener for when DataChannel is closed
@@ -262,6 +261,15 @@ class P2PFileSender {
         this.dataChannel.onerror = (error) => {
             this.showError('An error occurred during file transfer.');
             this.cleanup();
+        };
+
+        // Event listener for bufferedAmountLow event
+        this.dataChannel.onbufferedamountlow = () => {
+            // Resume sending data when bufferedAmount is low
+            if (this.isPaused) {
+                this.isPaused = false;
+                this.sendFileData();
+            }
         };
     }
 
@@ -356,9 +364,6 @@ class P2PFileSender {
                 type: 'file-info',
                 data: fileInfo,
             }));
-
-            // Start sending file data
-            this.sendFileData();
         } catch (error) {
             this.showError('Failed to send file information.');
         }
@@ -371,76 +376,45 @@ class P2PFileSender {
             return;
         }
 
-        // Send chunks until maxPendingChunks is reached
-        while (this.pendingAcknowledgments < this.maxPendingChunks && this.currentChunk < this.file.size) {
-            // Read next chunk
-            const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
-            this.fileReader.readAsArrayBuffer(chunk);
-
-            // Wait for the FileReader to load the chunk
-            this.fileReader.onload = (event) => {
-                // Send chunk to receiver
-                if (this.dataChannel.readyState === 'open') {
-                    this.dataChannel.send(event.target.result);
-                    this.currentChunk += event.target.result.byteLength;
-
-                    // Update pending acknowledgments
-                    this.pendingAcknowledgments++;
-
-                    // Update progress bar
-                    const progress = (this.currentChunk / this.file.size) * 100;
-                    this.progressBarFill.style.width = `${progress}%`;
-                    this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
-
-                    // Continue sending data
-                    this.sendFileData();
-                } else {
-                    this.showError('Connection was lost during file transfer.');
-                    this.cleanup();
-                }
-            };
-
-            // Break if the FileReader is busy (to prevent overlapping reads)
-            if (this.fileReader.readyState === 1) { // LOADING
-                break;
-            }
-        }
-
         // Check if file transfer is complete
-        if (this.currentChunk >= this.file.size && this.pendingAcknowledgments === 0) {
+        if (this.currentChunk >= this.file.size) {
             // File transfer complete
             this.transferStatus.textContent = 'File transfer complete!';
             this.dataChannel.send(JSON.stringify({ type: 'complete' }));
             this.transferComplete = true;
             this.stopBtn.style.display = 'none'; // Hide stop button
             this.cleanup();
+            return;
         }
+
+        // Check if bufferedAmount is too high
+        if (this.dataChannel.bufferedAmount >= this.bufferedAmountHighThreshold) {
+            // Pause sending data until bufferedAmount is low
+            this.isPaused = true;
+            return;
+        }
+
+        // Read next chunk
+        const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
+        this.fileReader.readAsArrayBuffer(chunk);
     }
 
-    // Handle messages from the receiver (for flow control)
-    handleReceiverMessage(event) {
-        try {
-            const message = JSON.parse(event.data);
+    // Handle chunk read by FileReader
+    handleChunkRead(event) {
+        if (this.dataChannel.readyState === 'open') {
+            this.dataChannel.send(event.target.result);
+            this.currentChunk += event.target.result.byteLength;
 
-            if (message.type === 'ack') {
-                // Receiver acknowledged a chunk
-                this.pendingAcknowledgments--;
+            // Update progress bar
+            const progress = (this.currentChunk / this.file.size) * 100;
+            this.progressBarFill.style.width = `${progress}%`;
+            this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
 
-                // Resume sending data if paused
-                if (this.isPaused && this.pendingAcknowledgments < this.maxPendingChunks) {
-                    this.isPaused = false;
-                    this.sendFileData();
-                }
-            } else if (message.type === 'pause') {
-                // Receiver requests to pause sending
-                this.isPaused = true;
-            } else if (message.type === 'resume') {
-                // Receiver requests to resume sending
-                this.isPaused = false;
-                this.sendFileData();
-            }
-        } catch (e) {
-            console.error('Error parsing receiver message:', e);
+            // Continue sending data
+            this.sendFileData();
+        } else {
+            this.showError('Connection was lost during file transfer.');
+            this.cleanup();
         }
     }
 
@@ -504,7 +478,6 @@ class P2PFileSender {
             clearInterval(this.pollInterval);
         }
         this.isPaused = false;
-        this.pendingAcknowledgments = 0;
     }
 
     // Copy text to clipboard

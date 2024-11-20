@@ -11,10 +11,6 @@ class P2PFileReceiver {
         this.transferComplete = false;
         this.stoppedBySelf = false;
 
-        // Flow control variables
-        this.maxBufferSize = 1048576; // 1MB
-        this.isPaused = false; // Indicates if receiving is paused
-
         this.initializeElements();
         this.initializeEventListeners();
         this.checkForCodeInURL();
@@ -226,9 +222,6 @@ class P2PFileReceiver {
             this.connectionStatus.textContent = 'File transfer started...';
             this.progressBar.style.display = 'block'; // Show progress bar
             this.transferStatus.style.display = 'block'; // Show transfer status
-
-            // Start flow control by sending 'resume' message
-            this.dataChannel.send(JSON.stringify({ type: 'resume' }));
         };
 
         // Event listener for when DataChannel is closed
@@ -267,29 +260,6 @@ class P2PFileReceiver {
         const progress = (this.receivedSize / this.fileInfo.size) * 100;
         this.progressBarFill.style.width = `${progress}%`;
         this.transferStatus.textContent = `Receiving: ${Math.round(progress)}%`;
-
-        // Send acknowledgment to sender
-        this.dataChannel.send(JSON.stringify({ type: 'ack' }));
-
-        // Check if buffer is too large and pause if necessary
-        if (this.getBufferSize() > this.maxBufferSize && !this.isPaused) {
-            // Pause receiving
-            this.isPaused = true;
-            this.dataChannel.send(JSON.stringify({ type: 'pause' }));
-        } else if (this.isPaused && this.getBufferSize() < this.maxBufferSize / 2) {
-            // Resume receiving
-            this.isPaused = false;
-            this.dataChannel.send(JSON.stringify({ type: 'resume' }));
-        }
-    }
-
-    // Calculate total buffer size of received chunks
-    getBufferSize() {
-        let totalSize = 0;
-        for (let i = 0; i < this.fileChunks.length; i++) {
-            totalSize += this.fileChunks[i].byteLength;
-        }
-        return totalSize;
     }
 
     // Handle transfer completion
@@ -371,7 +341,6 @@ class P2PFileReceiver {
             this.dataChannel.close();
             this.dataChannel = null;
         }
-        this.isPaused = false;
     }
 
     // Check for connection code in URL and auto-connect
