@@ -83,7 +83,7 @@ class P2PFileReceiver {
 
         try {
             // Get the connection offer
-            const response = await fetch(../connection/index.php?code=${code});
+            const response = await fetch(`../connection/index.php?code=${code}`);
             const result = await response.json();
 
             if (!result.success) {
@@ -237,8 +237,8 @@ class P2PFileReceiver {
         this.fileChunks.push(chunk);
         this.receivedSize += chunk.byteLength;
         const progress = (this.receivedSize / this.fileInfo.size) * 100;
-        this.progressBarFill.style.width = ${progress}%;
-        this.transferStatus.textContent = Receiving: ${Math.round(progress)}%;
+        this.progressBarFill.style.width = `${progress}%`;
+        this.transferStatus.textContent = `Receiving: ${Math.round(progress)}%`;
     }
 
     handleTransferComplete() {
@@ -295,7 +295,7 @@ class P2PFileReceiver {
 
     async deleteConnection(code) {
         try {
-            await fetch(../connection/index.php?action=delete&code=${code}, {
+            await fetch(`../connection/index.php?action=delete&code=${code}`, {
                 method: 'GET'
             });
         } catch (error) {

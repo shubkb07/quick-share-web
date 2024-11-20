@@ -254,7 +254,7 @@ class P2PFileSender {
 
     async checkForAnswer(code) {
         try {
-            const response = await fetch(../connection/index.php?code=${code});
+            const response = await fetch(`../connection/index.php?code=${code}`);
             const result = await response.json();
 
             if (result.success && result.data.is_connected) {
@@ -344,8 +344,8 @@ class P2PFileSender {
             this.dataChannel.send(event.target.result);
             this.currentChunk += event.target.result.byteLength;
             const progress = (this.currentChunk / this.file.size) * 100;
-            this.progressBarFill.style.width = ${progress}%;
-            this.transferStatus.textContent = Sending: ${Math.round(progress)}%;
+            this.progressBarFill.style.width = `${progress}%`;
+            this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
 
             // Continue sending data
             this.sendFileData();
@@ -388,7 +388,7 @@ class P2PFileSender {
 
     async deleteConnection(code) {
         try {
-            await fetch(../connection/index.php?action=delete&code=${code}, {
+            await fetch(`../connection/index.php?action=delete&code=${code}`, {
                 method: 'GET'
             });
         } catch (error) {
@@ -420,12 +420,12 @@ class P2PFileSender {
     }
 
     copyCode() {
-        const codeMessage = Here is the code to receive the file: ${this.connectionCode.textContent};
+        const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         this.copyToClipboard(codeMessage);
     }
 
     shareCode() {
-        const codeMessage = Here is the code to receive the file: ${this.connectionCode.textContent};
+        const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         if (navigator.share) {
             navigator.share({
                 title: 'QuickShare',
@@ -447,7 +447,7 @@ class P2PFileSender {
     }
 
     shareLink() {
-        const linkMessage = Click the link to receive the file: ${this.connectionURL.textContent};
+        const linkMessage = `Click the link to receive the file: ${this.connectionURL.textContent}`;
         if (navigator.share) {
             navigator.share({
                 title: 'QuickShare',
