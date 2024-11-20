@@ -10,6 +10,11 @@ class P2PFileReceiver {
         this.fileChunks = [];
         this.transferComplete = false;
         this.stoppedBySelf = false;
+
+        // Flow control variables
+        this.maxBufferSize = 1048576; // 1MB
+        this.isPaused = false; // Indicates if receiving is paused
+
         this.initializeElements();
         this.initializeEventListeners();
         this.checkForCodeInURL();
@@ -131,7 +136,7 @@ class P2PFileReceiver {
         // Set the remote description (offer)
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
             sdp: offerData.sdp,
-            type: offerData.type
+            type: offerData.type,
         }));
 
         // Add remote ICE candidates
@@ -198,11 +203,12 @@ class P2PFileReceiver {
     setupDataChannelHandlers(dataChannel) {
         this.dataChannel = dataChannel;
 
+        // Event listener for incoming messages
         dataChannel.onmessage = (event) => {
             if (typeof event.data === 'string') {
                 try {
                     const message = JSON.parse(event.data);
-                    if (message.type === 'info') {
+                    if (message.type === 'file-info') {
                         this.handleFileInfo(message.data);
                     } else if (message.type === 'complete') {
                         this.handleTransferComplete();
@@ -215,12 +221,17 @@ class P2PFileReceiver {
             }
         };
 
+        // Event listener for when DataChannel is open
         dataChannel.onopen = () => {
             this.connectionStatus.textContent = 'File transfer started...';
             this.progressBar.style.display = 'block'; // Show progress bar
             this.transferStatus.style.display = 'block'; // Show transfer status
+
+            // Start flow control by sending 'resume' message
+            this.dataChannel.send(JSON.stringify({ type: 'resume' }));
         };
 
+        // Event listener for when DataChannel is closed
         dataChannel.onclose = () => {
             if (!this.transferComplete && !this.stoppedBySelf) {
                 this.showError('The sender has stopped the file transfer.');
@@ -229,6 +240,7 @@ class P2PFileReceiver {
             this.cleanup();
         };
 
+        // Event listener for errors on the DataChannel
         dataChannel.onerror = (error) => {
             this.showError('An error occurred during file transfer.');
             this.cleanup();
@@ -247,11 +259,37 @@ class P2PFileReceiver {
 
     // Handle received file chunk
     handleFileChunk(chunk) {
+        // Add chunk to fileChunks array
         this.fileChunks.push(chunk);
         this.receivedSize += chunk.byteLength;
+
+        // Update progress bar
         const progress = (this.receivedSize / this.fileInfo.size) * 100;
         this.progressBarFill.style.width = `${progress}%`;
         this.transferStatus.textContent = `Receiving: ${Math.round(progress)}%`;
+
+        // Send acknowledgment to sender
+        this.dataChannel.send(JSON.stringify({ type: 'ack' }));
+
+        // Check if buffer is too large and pause if necessary
+        if (this.getBufferSize() > this.maxBufferSize && !this.isPaused) {
+            // Pause receiving
+            this.isPaused = true;
+            this.dataChannel.send(JSON.stringify({ type: 'pause' }));
+        } else if (this.isPaused && this.getBufferSize() < this.maxBufferSize / 2) {
+            // Resume receiving
+            this.isPaused = false;
+            this.dataChannel.send(JSON.stringify({ type: 'resume' }));
+        }
+    }
+
+    // Calculate total buffer size of received chunks
+    getBufferSize() {
+        let totalSize = 0;
+        for (let i = 0; i < this.fileChunks.length; i++) {
+            totalSize += this.fileChunks[i].byteLength;
+        }
+        return totalSize;
     }
 
     // Handle transfer completion
@@ -329,6 +367,11 @@ class P2PFileReceiver {
             this.peerConnection.close();
             this.peerConnection = null;
         }
+        if (this.dataChannel) {
+            this.dataChannel.close();
+            this.dataChannel = null;
+        }
+        this.isPaused = false;
     }
 
     // Check for connection code in URL and auto-connect

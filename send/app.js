@@ -16,8 +16,12 @@ class P2PFileSender {
         this.stoppedBySelf = false;
         this.isTransferring = false;
         this.canCopyCode = true;
-        this.paused = false; // Flag to indicate if sending is paused due to buffer being full
-        this.MAX_BUFFER_SIZE = 1048576; // 1MB buffer size threshold
+
+        // Flow control variables
+        this.isPaused = false; // Indicates if sending is paused
+        this.pendingAcknowledgments = 0; // Number of chunks sent but not yet acknowledged
+        this.maxPendingChunks = 10; // Maximum number of unacknowledged chunks allowed
+
         this.initializeElements();
         this.initializeEventListeners();
         this.applyTheme();
@@ -96,6 +100,9 @@ class P2PFileSender {
 
         // Theme switcher event
         this.themeSelect.addEventListener('change', () => this.changeTheme());
+
+        // Listen for messages from the receiver for flow control
+        this.messageHandler = (event) => this.handleReceiverMessage(event);
     }
 
     // Apply saved theme or default to system preference
@@ -128,8 +135,10 @@ class P2PFileSender {
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
 
+        // Create DataChannel with reliable and ordered delivery
         this.dataChannel = this.peerConnection.createDataChannel('fileTransfer', {
-            ordered: true
+            ordered: true,
+            reliable: true,
         });
 
         this.setupDataChannelHandlers();
@@ -213,19 +222,11 @@ class P2PFileSender {
 
     // Set up DataChannel event handlers
     setupDataChannelHandlers() {
-        // Set buffer amount low threshold for flow control
-        this.dataChannel.bufferedAmountLowThreshold = 262144; // 256KB
-
-        // Event listener for when bufferedAmount falls below threshold
-        this.dataChannel.addEventListener('bufferedamountlow', () => {
-            if (this.paused) {
-                this.paused = false;
-                this.sendFileData();
-            }
-        });
-
+        // Event listener for when DataChannel is open
         this.dataChannel.onopen = () => {
             this.connectionStatus.textContent = 'Receiver connected! Starting file transfer...';
+
+            // Send file info to the receiver
             this.sendFileInfo();
 
             // Hide copy and share buttons once connected
@@ -243,8 +244,12 @@ class P2PFileSender {
             this.connectionCode.removeEventListener('click', this.copyCodeHandler);
 
             this.isTransferring = true;
+
+            // Add event listener for messages from the receiver
+            this.dataChannel.addEventListener('message', this.messageHandler);
         };
 
+        // Event listener for when DataChannel is closed
         this.dataChannel.onclose = () => {
             if (!this.transferComplete && !this.stoppedBySelf) {
                 this.showError('The receiver has stopped the file transfer.');
@@ -253,6 +258,7 @@ class P2PFileSender {
             this.cleanup();
         };
 
+        // Event listener for errors on the DataChannel
         this.dataChannel.onerror = (error) => {
             this.showError('An error occurred during file transfer.');
             this.cleanup();
@@ -342,12 +348,16 @@ class P2PFileSender {
             const fileInfo = {
                 name: this.file.name,
                 size: this.file.size,
-                type: this.file.type
+                type: this.file.type,
             };
+
+            // Send file info message to receiver
             this.dataChannel.send(JSON.stringify({
-                type: 'info',
-                data: fileInfo
+                type: 'file-info',
+                data: fileInfo,
             }));
+
+            // Start sending file data
             this.sendFileData();
         } catch (error) {
             this.showError('Failed to send file information.');
@@ -356,41 +366,81 @@ class P2PFileSender {
 
     // Send file data in chunks with flow control
     sendFileData() {
-        if (this.currentChunk >= this.file.size) {
+        // If transfer is paused, do not send data
+        if (this.isPaused) {
+            return;
+        }
+
+        // Send chunks until maxPendingChunks is reached
+        while (this.pendingAcknowledgments < this.maxPendingChunks && this.currentChunk < this.file.size) {
+            // Read next chunk
+            const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
+            this.fileReader.readAsArrayBuffer(chunk);
+
+            // Wait for the FileReader to load the chunk
+            this.fileReader.onload = (event) => {
+                // Send chunk to receiver
+                if (this.dataChannel.readyState === 'open') {
+                    this.dataChannel.send(event.target.result);
+                    this.currentChunk += event.target.result.byteLength;
+
+                    // Update pending acknowledgments
+                    this.pendingAcknowledgments++;
+
+                    // Update progress bar
+                    const progress = (this.currentChunk / this.file.size) * 100;
+                    this.progressBarFill.style.width = `${progress}%`;
+                    this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
+
+                    // Continue sending data
+                    this.sendFileData();
+                } else {
+                    this.showError('Connection was lost during file transfer.');
+                    this.cleanup();
+                }
+            };
+
+            // Break if the FileReader is busy (to prevent overlapping reads)
+            if (this.fileReader.readyState === 1) { // LOADING
+                break;
+            }
+        }
+
+        // Check if file transfer is complete
+        if (this.currentChunk >= this.file.size && this.pendingAcknowledgments === 0) {
             // File transfer complete
             this.transferStatus.textContent = 'File transfer complete!';
             this.dataChannel.send(JSON.stringify({ type: 'complete' }));
             this.transferComplete = true;
             this.stopBtn.style.display = 'none'; // Hide stop button
             this.cleanup();
-            return;
         }
-
-        if (this.dataChannel.bufferedAmount > this.MAX_BUFFER_SIZE) {
-            // Pause sending if buffer is full
-            this.paused = true;
-            return;
-        }
-
-        // Read next chunk
-        const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
-        this.fileReader.readAsArrayBuffer(chunk);
     }
 
-    // Handle chunk read by FileReader
-    handleChunkRead(event) {
-        if (this.dataChannel.readyState === 'open') {
-            this.dataChannel.send(event.target.result);
-            this.currentChunk += event.target.result.byteLength;
-            const progress = (this.currentChunk / this.file.size) * 100;
-            this.progressBarFill.style.width = `${progress}%`;
-            this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
+    // Handle messages from the receiver (for flow control)
+    handleReceiverMessage(event) {
+        try {
+            const message = JSON.parse(event.data);
 
-            // After sending, attempt to send next chunk
-            this.sendFileData();
-        } else {
-            this.showError('Connection was lost during file transfer.');
-            this.cleanup();
+            if (message.type === 'ack') {
+                // Receiver acknowledged a chunk
+                this.pendingAcknowledgments--;
+
+                // Resume sending data if paused
+                if (this.isPaused && this.pendingAcknowledgments < this.maxPendingChunks) {
+                    this.isPaused = false;
+                    this.sendFileData();
+                }
+            } else if (message.type === 'pause') {
+                // Receiver requests to pause sending
+                this.isPaused = true;
+            } else if (message.type === 'resume') {
+                // Receiver requests to resume sending
+                this.isPaused = false;
+                this.sendFileData();
+            }
+        } catch (e) {
+            console.error('Error parsing receiver message:', e);
         }
     }
 
@@ -453,6 +503,8 @@ class P2PFileSender {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
+        this.isPaused = false;
+        this.pendingAcknowledgments = 0;
     }
 
     // Copy text to clipboard
