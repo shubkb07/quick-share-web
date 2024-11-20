@@ -264,12 +264,25 @@ class P2PFileReceiver {
 
     // Handle transfer completion
     handleTransferComplete() {
-        this.transferStatus.textContent = 'File transfer complete!';
-        this.downloadBtn.style.display = 'block';
-        this.downloadFile(); // Auto-download
-        this.transferComplete = true;
-        this.stopBtn.style.display = 'none'; // Hide stop button
-        this.cleanup();
+        // Ensure that the file is fully received
+        if (this.receivedSize >= this.fileInfo.size) {
+            this.transferStatus.textContent = 'File transfer complete!';
+            this.downloadBtn.style.display = 'block';
+            this.downloadFile(); // Auto-download
+            this.transferComplete = true;
+            this.stopBtn.style.display = 'none'; // Hide stop button
+
+            // Close the DataChannel and PeerConnection after a delay to ensure all data is processed
+            setTimeout(() => {
+                if (this.dataChannel) {
+                    this.dataChannel.close();
+                }
+                this.cleanup();
+            }, 1000);
+        } else {
+            // Handle incomplete transfer
+            this.showError('File transfer was incomplete.');
+        }
     }
 
     // Download the received file
@@ -341,6 +354,8 @@ class P2PFileReceiver {
             this.dataChannel.close();
             this.dataChannel = null;
         }
+        this.connectBtn.disabled = false;
+        this.transferComplete = false;
     }
 
     // Check for connection code in URL and auto-connect

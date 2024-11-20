@@ -378,12 +378,11 @@ class P2PFileSender {
 
         // Check if file transfer is complete
         if (this.currentChunk >= this.file.size) {
-            // File transfer complete
-            this.transferStatus.textContent = 'File transfer complete!';
-            this.dataChannel.send(JSON.stringify({ type: 'complete' }));
-            this.transferComplete = true;
-            this.stopBtn.style.display = 'none'; // Hide stop button
-            this.cleanup();
+            // Ensure that 'complete' message is sent only once
+            if (!this.transferComplete) {
+                this.dataChannel.send(JSON.stringify({ type: 'complete' }));
+                this.transferComplete = true;
+            }
             return;
         }
 
@@ -412,6 +411,16 @@ class P2PFileSender {
 
             // Continue sending data
             this.sendFileData();
+
+            // Check if file transfer is complete
+            if (this.currentChunk >= this.file.size && !this.transferComplete) {
+                this.transferStatus.textContent = 'File transfer complete!';
+                this.stopBtn.style.display = 'none'; // Hide stop button
+                // Wait a moment before closing the connection to ensure the receiver gets all data
+                setTimeout(() => {
+                    this.cleanup();
+                }, 1000);
+            }
         } else {
             this.showError('Connection was lost during file transfer.');
             this.cleanup();
@@ -478,6 +487,9 @@ class P2PFileSender {
             clearInterval(this.pollInterval);
         }
         this.isPaused = false;
+        this.currentChunk = 0;
+        this.transferComplete = false;
+        this.isTransferring = false;
     }
 
     // Copy text to clipboard
