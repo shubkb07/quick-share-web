@@ -2,7 +2,6 @@
 
 class P2PFileSender {
     constructor() {
-        // Initialize properties
         this.peerConnection = null;
         this.dataChannel = null;
         this.file = null;
@@ -16,18 +15,11 @@ class P2PFileSender {
         this.stoppedBySelf = false;
         this.isTransferring = false;
         this.canCopyCode = true;
-
-        // Flow control variables
-        this.isPaused = false; // Indicates if sending is paused
-        this.bufferedAmountHighThreshold = 262144; // 256KB
-        this.bufferedAmountLowThreshold = 65536; // 64KB
-
         this.initializeElements();
         this.initializeEventListeners();
         this.applyTheme();
     }
 
-    // Initialize DOM elements
     initializeElements() {
         this.dropArea = document.getElementById('dropArea');
         this.fileInput = document.getElementById('fileInput');
@@ -58,7 +50,6 @@ class P2PFileSender {
         this.stopBtn.style.display = 'none';
     }
 
-    // Initialize event listeners
     initializeEventListeners() {
         // File selection events
         this.dropArea.addEventListener('click', () => this.fileInput.click());
@@ -76,7 +67,7 @@ class P2PFileSender {
             this.handleFileDrop(e);
         });
 
-        // FileReader event
+        // File reader events
         this.fileReader.addEventListener('load', (e) => this.handleChunkRead(e));
 
         // Stop button event
@@ -88,7 +79,7 @@ class P2PFileSender {
         this.copyLinkBtn.addEventListener('click', () => this.copyLink());
         this.shareLinkBtn.addEventListener('click', () => this.shareLink());
 
-        // Click events to copy code and URL
+        // Click events to copy code and URL (copy as is)
         this.canCopyCode = true;
         this.copyCodeHandler = () => {
             if (this.canCopyCode) {
@@ -102,14 +93,12 @@ class P2PFileSender {
         this.themeSelect.addEventListener('change', () => this.changeTheme());
     }
 
-    // Apply saved theme or default to system preference
     applyTheme() {
         const theme = localStorage.getItem('theme') || 'system';
         this.setTheme(theme);
         this.themeSelect.value = theme;
     }
 
-    // Set theme
     setTheme(theme) {
         if (theme === 'system') {
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -120,19 +109,16 @@ class P2PFileSender {
         localStorage.setItem('theme', theme);
     }
 
-    // Change theme based on selection
     changeTheme() {
         const selectedTheme = this.themeSelect.value;
         this.setTheme(selectedTheme);
     }
 
-    // Initialize RTCPeerConnection and DataChannel
     async initializePeerConnection() {
         this.peerConnection = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
 
-        // Create DataChannel with ordered delivery
         this.dataChannel = this.peerConnection.createDataChannel('fileTransfer', {
             ordered: true
         });
@@ -194,7 +180,6 @@ class P2PFileSender {
 
             const result = await response.json();
             if (result.success) {
-                // Display connection code and URL
                 this.connectionCode.textContent = result.code;
                 const url = new URL(window.location.href);
                 url.pathname = url.pathname.replace('send', 'receive');
@@ -206,7 +191,6 @@ class P2PFileSender {
                 // Enable copy functionality
                 this.canCopyCode = true;
 
-                // Start polling for receiver's answer
                 this.startPollingForAnswer(result.code);
             } else {
                 throw new Error('Failed to create connection');
@@ -216,18 +200,10 @@ class P2PFileSender {
         }
     }
 
-    // Set up DataChannel event handlers
     setupDataChannelHandlers() {
-        // Set the bufferedAmountLowThreshold for flow control
-        this.dataChannel.bufferedAmountLowThreshold = this.bufferedAmountLowThreshold;
-
-        // Event listener for when DataChannel is open
         this.dataChannel.onopen = () => {
             this.connectionStatus.textContent = 'Receiver connected! Starting file transfer...';
-
-            // Send file info to the receiver
             this.sendFileInfo();
-
             // Hide copy and share buttons once connected
             this.copyCodeBtn.style.display = 'none';
             this.shareCodeBtn.style.display = 'none';
@@ -243,12 +219,8 @@ class P2PFileSender {
             this.connectionCode.removeEventListener('click', this.copyCodeHandler);
 
             this.isTransferring = true;
-
-            // Start sending file data
-            this.sendFileData();
         };
 
-        // Event listener for when DataChannel is closed
         this.dataChannel.onclose = () => {
             if (!this.transferComplete && !this.stoppedBySelf) {
                 this.showError('The receiver has stopped the file transfer.');
@@ -257,23 +229,12 @@ class P2PFileSender {
             this.cleanup();
         };
 
-        // Event listener for errors on the DataChannel
         this.dataChannel.onerror = (error) => {
             this.showError('An error occurred during file transfer.');
             this.cleanup();
         };
-
-        // Event listener for bufferedAmountLow event
-        this.dataChannel.onbufferedamountlow = () => {
-            // Resume sending data when bufferedAmount is low
-            if (this.isPaused) {
-                this.isPaused = false;
-                this.sendFileData();
-            }
-        };
     }
 
-    // Start polling server for receiver's answer
     startPollingForAnswer(code) {
         this.pollInterval = setInterval(async () => {
             this.pollCount++;
@@ -291,7 +252,6 @@ class P2PFileSender {
         }, 5000); // Every 5 seconds
     }
 
-    // Check for receiver's answer
     async checkForAnswer(code) {
         try {
             const response = await fetch(`../connection/index.php?code=${code}`);
@@ -325,7 +285,6 @@ class P2PFileSender {
         return false;
     }
 
-    // Handle file selection from input
     handleFileSelect(event) {
         const file = event.target.files[0];
         if (file) {
@@ -333,7 +292,6 @@ class P2PFileSender {
         }
     }
 
-    // Handle file drop
     handleFileDrop(event) {
         const file = event.dataTransfer.files[0];
         if (file) {
@@ -341,7 +299,6 @@ class P2PFileSender {
         }
     }
 
-    // Process selected file
     processFile(file) {
         this.file = file;
         this.fileName.textContent = file.name;
@@ -350,84 +307,54 @@ class P2PFileSender {
         this.initializePeerConnection();
     }
 
-    // Send file information to receiver
     sendFileInfo() {
         try {
             const fileInfo = {
                 name: this.file.name,
                 size: this.file.size,
-                type: this.file.type,
+                type: this.file.type
             };
-
-            // Send file info message to receiver
             this.dataChannel.send(JSON.stringify({
-                type: 'file-info',
-                data: fileInfo,
+                type: 'info',
+                data: fileInfo
             }));
+            this.sendFileData();
         } catch (error) {
             this.showError('Failed to send file information.');
         }
     }
 
-    // Send file data in chunks with flow control
     sendFileData() {
-        // If transfer is paused, do not send data
-        if (this.isPaused) {
-            return;
-        }
-
-        // Check if file transfer is complete
         if (this.currentChunk >= this.file.size) {
-            // Ensure that 'complete' message is sent only once
-            if (!this.transferComplete) {
-                this.dataChannel.send(JSON.stringify({ type: 'complete' }));
-                this.transferComplete = true;
-            }
+            // File transfer complete
+            this.transferStatus.textContent = 'File transfer complete!';
+            this.dataChannel.send(JSON.stringify({ type: 'complete' }));
+            this.transferComplete = true;
+            this.stopBtn.style.display = 'none'; // Hide stop button
+            this.cleanup();
             return;
         }
 
-        // Check if bufferedAmount is too high
-        if (this.dataChannel.bufferedAmount >= this.bufferedAmountHighThreshold) {
-            // Pause sending data until bufferedAmount is low
-            this.isPaused = true;
-            return;
-        }
-
-        // Read next chunk
         const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
         this.fileReader.readAsArrayBuffer(chunk);
     }
 
-    // Handle chunk read by FileReader
     handleChunkRead(event) {
         if (this.dataChannel.readyState === 'open') {
             this.dataChannel.send(event.target.result);
             this.currentChunk += event.target.result.byteLength;
-
-            // Update progress bar
             const progress = (this.currentChunk / this.file.size) * 100;
             this.progressBarFill.style.width = `${progress}%`;
             this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
 
             // Continue sending data
             this.sendFileData();
-
-            // Check if file transfer is complete
-            if (this.currentChunk >= this.file.size && !this.transferComplete) {
-                this.transferStatus.textContent = 'File transfer complete!';
-                this.stopBtn.style.display = 'none'; // Hide stop button
-                // Wait a moment before closing the connection to ensure the receiver gets all data
-                setTimeout(() => {
-                    this.cleanup();
-                }, 1000);
-            }
         } else {
             this.showError('Connection was lost during file transfer.');
             this.cleanup();
         }
     }
 
-    // Format file size for display
     formatFileSize(bytes) {
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         if (bytes === 0) return '0 Byte';
@@ -435,13 +362,11 @@ class P2PFileSender {
         return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
     }
 
-    // Display error message
     showError(message) {
         this.errorMessage.textContent = message;
         this.errorMessage.style.display = 'block';
     }
 
-    // Display notification message
     showNotification(message) {
         this.notificationMessage.textContent = message;
         this.notificationMessage.style.display = 'block';
@@ -450,7 +375,6 @@ class P2PFileSender {
         }, 3000);
     }
 
-    // Stop file transfer
     async stopTransfer() {
         this.stoppedBySelf = true;
         this.showError('You have stopped the file transfer.');
@@ -462,7 +386,6 @@ class P2PFileSender {
         this.cleanup();
     }
 
-    // Delete connection from server
     async deleteConnection(code) {
         try {
             await fetch(`../connection/index.php?action=delete&code=${code}`, {
@@ -473,7 +396,6 @@ class P2PFileSender {
         }
     }
 
-    // Cleanup resources
     cleanup() {
         if (this.peerConnection) {
             this.peerConnection.close();
@@ -486,13 +408,8 @@ class P2PFileSender {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
-        this.isPaused = false;
-        this.currentChunk = 0;
-        this.transferComplete = false;
-        this.isTransferring = false;
     }
 
-    // Copy text to clipboard
     copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
             this.showNotification('Copied to clipboard');
@@ -502,13 +419,11 @@ class P2PFileSender {
         });
     }
 
-    // Copy connection code with message
     copyCode() {
         const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         this.copyToClipboard(codeMessage);
     }
 
-    // Share connection code
     shareCode() {
         const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         if (navigator.share) {
@@ -526,13 +441,11 @@ class P2PFileSender {
         }
     }
 
-    // Copy connection link
     copyLink() {
         const url = this.connectionURL.textContent;
         this.copyToClipboard(url);
     }
 
-    // Share connection link
     shareLink() {
         const linkMessage = `Click the link to receive the file: ${this.connectionURL.textContent}`;
         if (navigator.share) {
