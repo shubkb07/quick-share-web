@@ -2,6 +2,7 @@
 
 class P2PFileSender {
     constructor() {
+        // Initialize properties
         this.peerConnection = null;
         this.dataChannel = null;
         this.file = null;
@@ -15,11 +16,14 @@ class P2PFileSender {
         this.stoppedBySelf = false;
         this.isTransferring = false;
         this.canCopyCode = true;
+        this.paused = false; // Flag to indicate if sending is paused due to buffer being full
+        this.MAX_BUFFER_SIZE = 1048576; // 1MB buffer size threshold
         this.initializeElements();
         this.initializeEventListeners();
         this.applyTheme();
     }
 
+    // Initialize DOM elements
     initializeElements() {
         this.dropArea = document.getElementById('dropArea');
         this.fileInput = document.getElementById('fileInput');
@@ -50,6 +54,7 @@ class P2PFileSender {
         this.stopBtn.style.display = 'none';
     }
 
+    // Initialize event listeners
     initializeEventListeners() {
         // File selection events
         this.dropArea.addEventListener('click', () => this.fileInput.click());
@@ -67,7 +72,7 @@ class P2PFileSender {
             this.handleFileDrop(e);
         });
 
-        // File reader events
+        // FileReader event
         this.fileReader.addEventListener('load', (e) => this.handleChunkRead(e));
 
         // Stop button event
@@ -79,7 +84,7 @@ class P2PFileSender {
         this.copyLinkBtn.addEventListener('click', () => this.copyLink());
         this.shareLinkBtn.addEventListener('click', () => this.shareLink());
 
-        // Click events to copy code and URL (copy as is)
+        // Click events to copy code and URL
         this.canCopyCode = true;
         this.copyCodeHandler = () => {
             if (this.canCopyCode) {
@@ -93,12 +98,14 @@ class P2PFileSender {
         this.themeSelect.addEventListener('change', () => this.changeTheme());
     }
 
+    // Apply saved theme or default to system preference
     applyTheme() {
         const theme = localStorage.getItem('theme') || 'system';
         this.setTheme(theme);
         this.themeSelect.value = theme;
     }
 
+    // Set theme
     setTheme(theme) {
         if (theme === 'system') {
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -109,11 +116,13 @@ class P2PFileSender {
         localStorage.setItem('theme', theme);
     }
 
+    // Change theme based on selection
     changeTheme() {
         const selectedTheme = this.themeSelect.value;
         this.setTheme(selectedTheme);
     }
 
+    // Initialize RTCPeerConnection and DataChannel
     async initializePeerConnection() {
         this.peerConnection = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -180,6 +189,7 @@ class P2PFileSender {
 
             const result = await response.json();
             if (result.success) {
+                // Display connection code and URL
                 this.connectionCode.textContent = result.code;
                 const url = new URL(window.location.href);
                 url.pathname = url.pathname.replace('send', 'receive');
@@ -191,6 +201,7 @@ class P2PFileSender {
                 // Enable copy functionality
                 this.canCopyCode = true;
 
+                // Start polling for receiver's answer
                 this.startPollingForAnswer(result.code);
             } else {
                 throw new Error('Failed to create connection');
@@ -200,10 +211,23 @@ class P2PFileSender {
         }
     }
 
+    // Set up DataChannel event handlers
     setupDataChannelHandlers() {
+        // Set buffer amount low threshold for flow control
+        this.dataChannel.bufferedAmountLowThreshold = 262144; // 256KB
+
+        // Event listener for when bufferedAmount falls below threshold
+        this.dataChannel.addEventListener('bufferedamountlow', () => {
+            if (this.paused) {
+                this.paused = false;
+                this.sendFileData();
+            }
+        });
+
         this.dataChannel.onopen = () => {
             this.connectionStatus.textContent = 'Receiver connected! Starting file transfer...';
             this.sendFileInfo();
+
             // Hide copy and share buttons once connected
             this.copyCodeBtn.style.display = 'none';
             this.shareCodeBtn.style.display = 'none';
@@ -235,6 +259,7 @@ class P2PFileSender {
         };
     }
 
+    // Start polling server for receiver's answer
     startPollingForAnswer(code) {
         this.pollInterval = setInterval(async () => {
             this.pollCount++;
@@ -252,6 +277,7 @@ class P2PFileSender {
         }, 5000); // Every 5 seconds
     }
 
+    // Check for receiver's answer
     async checkForAnswer(code) {
         try {
             const response = await fetch(`../connection/index.php?code=${code}`);
@@ -285,6 +311,7 @@ class P2PFileSender {
         return false;
     }
 
+    // Handle file selection from input
     handleFileSelect(event) {
         const file = event.target.files[0];
         if (file) {
@@ -292,6 +319,7 @@ class P2PFileSender {
         }
     }
 
+    // Handle file drop
     handleFileDrop(event) {
         const file = event.dataTransfer.files[0];
         if (file) {
@@ -299,6 +327,7 @@ class P2PFileSender {
         }
     }
 
+    // Process selected file
     processFile(file) {
         this.file = file;
         this.fileName.textContent = file.name;
@@ -307,6 +336,7 @@ class P2PFileSender {
         this.initializePeerConnection();
     }
 
+    // Send file information to receiver
     sendFileInfo() {
         try {
             const fileInfo = {
@@ -324,6 +354,7 @@ class P2PFileSender {
         }
     }
 
+    // Send file data in chunks with flow control
     sendFileData() {
         if (this.currentChunk >= this.file.size) {
             // File transfer complete
@@ -335,10 +366,18 @@ class P2PFileSender {
             return;
         }
 
+        if (this.dataChannel.bufferedAmount > this.MAX_BUFFER_SIZE) {
+            // Pause sending if buffer is full
+            this.paused = true;
+            return;
+        }
+
+        // Read next chunk
         const chunk = this.file.slice(this.currentChunk, this.currentChunk + this.chunkSize);
         this.fileReader.readAsArrayBuffer(chunk);
     }
 
+    // Handle chunk read by FileReader
     handleChunkRead(event) {
         if (this.dataChannel.readyState === 'open') {
             this.dataChannel.send(event.target.result);
@@ -347,7 +386,7 @@ class P2PFileSender {
             this.progressBarFill.style.width = `${progress}%`;
             this.transferStatus.textContent = `Sending: ${Math.round(progress)}%`;
 
-            // Continue sending data
+            // After sending, attempt to send next chunk
             this.sendFileData();
         } else {
             this.showError('Connection was lost during file transfer.');
@@ -355,6 +394,7 @@ class P2PFileSender {
         }
     }
 
+    // Format file size for display
     formatFileSize(bytes) {
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         if (bytes === 0) return '0 Byte';
@@ -362,11 +402,13 @@ class P2PFileSender {
         return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
     }
 
+    // Display error message
     showError(message) {
         this.errorMessage.textContent = message;
         this.errorMessage.style.display = 'block';
     }
 
+    // Display notification message
     showNotification(message) {
         this.notificationMessage.textContent = message;
         this.notificationMessage.style.display = 'block';
@@ -375,6 +417,7 @@ class P2PFileSender {
         }, 3000);
     }
 
+    // Stop file transfer
     async stopTransfer() {
         this.stoppedBySelf = true;
         this.showError('You have stopped the file transfer.');
@@ -386,6 +429,7 @@ class P2PFileSender {
         this.cleanup();
     }
 
+    // Delete connection from server
     async deleteConnection(code) {
         try {
             await fetch(`../connection/index.php?action=delete&code=${code}`, {
@@ -396,6 +440,7 @@ class P2PFileSender {
         }
     }
 
+    // Cleanup resources
     cleanup() {
         if (this.peerConnection) {
             this.peerConnection.close();
@@ -410,6 +455,7 @@ class P2PFileSender {
         }
     }
 
+    // Copy text to clipboard
     copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
             this.showNotification('Copied to clipboard');
@@ -419,11 +465,13 @@ class P2PFileSender {
         });
     }
 
+    // Copy connection code with message
     copyCode() {
         const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         this.copyToClipboard(codeMessage);
     }
 
+    // Share connection code
     shareCode() {
         const codeMessage = `Here is the code to receive the file: ${this.connectionCode.textContent}`;
         if (navigator.share) {
@@ -441,11 +489,13 @@ class P2PFileSender {
         }
     }
 
+    // Copy connection link
     copyLink() {
         const url = this.connectionURL.textContent;
         this.copyToClipboard(url);
     }
 
+    // Share connection link
     shareLink() {
         const linkMessage = `Click the link to receive the file: ${this.connectionURL.textContent}`;
         if (navigator.share) {
