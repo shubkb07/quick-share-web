@@ -1,0 +1,18 @@
+name: Notify Main Repository on Push
+
+on:
+  push:
+    branches:
+      - master  # Adjust if using a different default branch
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send repository_dispatch to app.shubkb.com
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.PAT_FINED_GRAINED_AUTOMATION }}
+          repository: shubkb07/app.shubkb.com
+          event-type: update-subtrees
